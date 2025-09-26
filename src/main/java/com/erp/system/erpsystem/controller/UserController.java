@@ -49,6 +49,15 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<UserDto>> getAllUsers(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.substring(7);
+        List<UserDto> users = userService.getAllUsers(token);
+        if(users.isEmpty())
+            return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(users);
+    }
+
     // --- Delete User ---
     @DeleteMapping("/delete/{id}")
     public ResponseEntity<String> deleteUser(@PathVariable Integer id) {

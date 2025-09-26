@@ -7,6 +7,7 @@ import com.erp.system.erpsystem.model.User;
 import com.erp.system.erpsystem.model.enums.Department;
 import com.erp.system.erpsystem.model.enums.Position;
 import com.erp.system.erpsystem.repository.UserRepository;
+import com.erp.system.erpsystem.utils.JwtUtil;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
@@ -21,11 +22,17 @@ public class UserService {
 
     private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
     @Autowired
-    public UserService(UserRepository userRepo, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepo, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
+    }
+
+    public Integer getOrgIdFromToken(String token) {
+        return (jwtUtil.extractOrgId(token));
     }
 
     // --- Create User ---
@@ -34,17 +41,14 @@ public class UserService {
         User user = new User();
         UserMapper.updateEntity(user, userUpdateDto);
 
-        // encode password
         if (user.getPassword() != null) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
         }
 
-        // generate UUID
         if (user.getUuId() == null) {
             user.setUuId(generateSequentialUuid(user));
         }
 
-        // handle reporting manager via UUID
         if (userUpdateDto.getReportingManager() != null) {
             userRepo.findByUuId(userUpdateDto.getReportingManager())
                     .ifPresent(user::setReportingManager);
@@ -90,6 +94,15 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    // --- Get All Users by org ---
+    public List<UserDto> getAllUsers(String token) {
+        Integer orgId = getOrgIdFromToken(token);
+        return userRepo.findByOrganization_OrgId(orgId)
+                .stream()
+                .map(UserMapper::toDto)
+                .toList();
+    }
+
 
     // --- Delete User ---
     public boolean deleteUser(Integer userId) {
@@ -105,7 +118,9 @@ public class UserService {
         String prefix;
 
         switch (user.getPosition()) {
-            case CEO -> { return "CEO"; }
+            case CEO -> {
+                return "CEO";
+            }
             case CXO -> prefix = "CXO";
             case PRESIDENT -> prefix = "PRES";
             case DIRECTOR -> prefix = "DIR";
@@ -122,6 +137,7 @@ public class UserService {
         }
         return prefix + String.format("%03d", nextNumber);
     }
+
     public User findByEmailId(String email) {
         return userRepo.findByEmail(email).orElse(null);
     }

@@ -22,4 +22,5 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     List<String> findTopByPrefix(String prefix, Pageable pageable);
 
     List<User> findByOrganization_OrgId(Integer orgId);
+
 }

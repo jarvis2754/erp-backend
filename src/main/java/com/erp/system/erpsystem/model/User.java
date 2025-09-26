@@ -57,7 +57,6 @@ public class User {
     private List<User> teamMembers;
 
     @Column(name = "joining_date", updatable = false)
-    @CreationTimestamp
     private LocalDate joiningDate;
 
     @JsonIgnore
@@ -71,5 +70,12 @@ public class User {
     @ManyToOne
     @JoinColumn(name = "organization_id", foreignKey = @ForeignKey(name = "fk_user_org"),nullable = false)
     private Organization organization;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Attendance> attendances;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Permission> permissions;
+
 
 }
