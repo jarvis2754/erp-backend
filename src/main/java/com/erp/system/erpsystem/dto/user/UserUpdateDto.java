@@ -17,4 +17,5 @@ public class UserUpdateDto {
     private Position position;
     private String password;
     private String reportingManager;
+    private String orgCode;
 }

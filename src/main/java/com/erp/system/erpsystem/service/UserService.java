@@ -3,9 +3,11 @@ package com.erp.system.erpsystem.service;
 import com.erp.system.erpsystem.dto.user.UserDto;
 import com.erp.system.erpsystem.dto.user.UserUpdateDto;
 import com.erp.system.erpsystem.mapper.UserMapper;
+import com.erp.system.erpsystem.model.Organization;
 import com.erp.system.erpsystem.model.User;
 import com.erp.system.erpsystem.model.enums.Department;
 import com.erp.system.erpsystem.model.enums.Position;
+import com.erp.system.erpsystem.repository.OrganizationRepository;
 import com.erp.system.erpsystem.repository.UserRepository;
 import com.erp.system.erpsystem.utils.JwtUtil;
 import jakarta.transaction.Transactional;
@@ -22,13 +24,15 @@ public class UserService {
 
     private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
+    private final OrganizationRepository organizationRepository;
     private final JwtUtil jwtUtil;
 
     @Autowired
-    public UserService(UserRepository userRepo, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+    public UserService(UserRepository userRepo, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,OrganizationRepository organizationRepository) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.organizationRepository=organizationRepository;
     }
 
     public Integer getOrgIdFromToken(String token) {
@@ -39,6 +43,12 @@ public class UserService {
     @Transactional
     public UserDto createUser(UserUpdateDto userUpdateDto) {
         User user = new User();
+        Organization organization = organizationRepository
+                .findByOrgCode(userUpdateDto.getOrgCode())
+                .orElseThrow(()-> new RuntimeException("Organization not found"));
+
+        user.setOrganization(organization);
+
         UserMapper.updateEntity(user, userUpdateDto);
 
         if (user.getPassword() != null) {
@@ -63,7 +73,10 @@ public class UserService {
     public UserDto updateUser(Integer userId, UserUpdateDto userUpdateDto) {
         User existing = userRepo.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
+        if(userUpdateDto.getOrgCode()!=null){
+            Organization organization = organizationRepository.findByOrgCode(userUpdateDto.getOrgCode()).orElseThrow(()-> new RuntimeException("Organization not found"));
+            existing.setOrganization(organization);
+        }
         UserMapper.updateEntity(existing, userUpdateDto);
 
         if (userUpdateDto.getReportingManager() != null) {

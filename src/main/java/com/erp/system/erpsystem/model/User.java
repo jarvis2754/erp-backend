@@ -68,7 +68,7 @@ public class User {
     private Position position;
 
     @ManyToOne
-    @JoinColumn(name = "organization_id", foreignKey = @ForeignKey(name = "fk_user_org"),nullable = false)
+    @JoinColumn(name = "organization_id", foreignKey = @ForeignKey(name = "fk_user_org"))
     private Organization organization;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)

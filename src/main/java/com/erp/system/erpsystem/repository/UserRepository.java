@@ -23,4 +23,5 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     List<User> findByOrganization_OrgId(Integer orgId);
 
+
 }

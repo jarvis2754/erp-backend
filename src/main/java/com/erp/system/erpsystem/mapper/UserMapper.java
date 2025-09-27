@@ -31,6 +31,6 @@ public class UserMapper {
         if (dto.getDepartment() != null) user.setDepartment(dto.getDepartment());
         if (dto.getPosition() != null) user.setPosition(dto.getPosition());
         if (dto.getPassword() != null) user.setPassword(dto.getPassword());
-
+        // reportingManager handled in service using UUID
     }
 }

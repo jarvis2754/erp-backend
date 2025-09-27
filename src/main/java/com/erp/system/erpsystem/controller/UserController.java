@@ -4,6 +4,7 @@ import com.erp.system.erpsystem.dto.user.UserDto;
 import com.erp.system.erpsystem.dto.user.UserUpdateDto;
 import com.erp.system.erpsystem.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,9 +23,15 @@ public class UserController {
 
     // --- Create User ---
     @PostMapping("/add")
-    public ResponseEntity<UserDto> createUser(@RequestBody UserUpdateDto userUpdateDto) {
-        UserDto created = userService.createUser(userUpdateDto);
-        return ResponseEntity.ok(created);
+    public ResponseEntity<?> createUser(@RequestBody UserUpdateDto userUpdateDto) {
+        try{
+            UserDto created = userService.createUser(userUpdateDto);
+            return ResponseEntity.ok(created);
+        }catch (Exception e){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(e.getMessage());
+        }
+
     }
 
     // --- Update User ---
