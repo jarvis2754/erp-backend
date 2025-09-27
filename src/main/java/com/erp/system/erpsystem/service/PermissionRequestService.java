@@ -20,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -74,6 +75,7 @@ public class PermissionRequestService {
         entity.setStatus(PermissionStatus.PENDING);
         entity.setRequestedBy(requester);
 
+
         Organization org = organizationRepository.findById(dto.getOrgId())
                 .orElseThrow(() -> new RuntimeException("Organization not found"));
         entity.setOrganization(org);
@@ -112,51 +114,68 @@ public class PermissionRequestService {
     // Update (only requester may update while PENDING)
     public PermissionRequestDto update(String token, Integer id, CreatePermissionRequestDto dto) {
         Integer userId = jwtUtil.extractUserId(token);
+
+        // Fetch the managed entity
         PermissionRequest existing = permissionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("PermissionRequest not found with id: " + id));
 
+        // Authorization check
         if (!existing.getRequestedBy().getUserId().equals(userId)) {
             throw new RuntimeException("Only requester can update the permission request");
         }
+
         if (existing.getStatus() != PermissionStatus.PENDING) {
             throw new RuntimeException("Only PENDING requests can be updated");
         }
-        if (dto.getEndTime() != null && dto.getStartTime() != null && dto.getEndTime().isBefore(dto.getStartTime())) {
+
+        if (dto.getStartTime() != null && dto.getEndTime() != null && dto.getEndTime().isBefore(dto.getStartTime())) {
             throw new RuntimeException("endTime must be after startTime");
         }
 
+        // Update fields only if provided
         if (dto.getStartTime() != null) existing.setStartTime(dto.getStartTime());
         if (dto.getEndTime() != null) existing.setEndTime(dto.getEndTime());
         if (dto.getReason() != null) existing.setReason(dto.getReason());
+
+        // Force updatedAt to current time
+        existing.setUpdatedAt(LocalDateTime.now());
 
         PermissionRequest saved = permissionRepository.save(existing);
         return mapper.entityToDto(saved);
     }
 
-    // Change status (approve/reject) - approver determined by token
+
     public PermissionRequestDto changeStatus(String token, Integer permissionId, UpdatePermissionStatusDto dto) {
         Integer approverId = jwtUtil.extractUserId(token);
         User approver = userRepository.findById(approverId)
                 .orElseThrow(() -> new RuntimeException("Approver not found"));
 
+        // Fetch the managed entity
         PermissionRequest permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new RuntimeException("PermissionRequest not found"));
 
-        // authorization
+        // Authorization
         if (!isAuthorizedToApprove(approver, permission.getRequestedBy())) {
             throw new RuntimeException("User not authorized to approve this permission");
         }
 
-        PermissionStatus s;
-        try { s = PermissionStatus.valueOf(dto.getStatus().toUpperCase()); }
-        catch (IllegalArgumentException ex) { throw new RuntimeException("Invalid status: " + dto.getStatus()); }
+        PermissionStatus status;
+        try {
+            status = PermissionStatus.valueOf(dto.getStatus().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeException("Invalid status: " + dto.getStatus());
+        }
 
-        permission.setStatus(s);
+        permission.setStatus(status);
         permission.setApprovedBy(approver);
+
+        // Force updatedAt to current time
+        permission.setUpdatedAt(LocalDateTime.now());
 
         PermissionRequest saved = permissionRepository.save(permission);
         return mapper.entityToDto(saved);
     }
+
 
     private boolean isAuthorizedToApprove(User approver, User requester) {
         // HR can approve any

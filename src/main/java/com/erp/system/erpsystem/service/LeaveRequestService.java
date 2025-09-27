@@ -20,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -120,9 +121,13 @@ public class LeaveRequestService {
         if (dto.getReason() != null) existing.setReason(dto.getReason());
         if (dto.getLeaveType() != null) existing.setLeaveType(dto.getLeaveType());
 
+        // Force updatedAt to current timestamp
+        existing.setUpdatedAt(LocalDateTime.now());
+
         LeaveRequest saved = leaveRequestRepository.save(existing);
         return mapper.entityToDto(saved);
     }
+
 
     public LeaveRequestDto changeStatus(String token, Integer leaveId, UpdateLeaveStatusDto dto) {
         Integer approverId = jwtUtil.extractUserId(token);
@@ -144,9 +149,13 @@ public class LeaveRequestService {
         leave.setStatus(status);
         leave.setApprovedBy(approver);
 
+        // Force updatedAt to current timestamp
+        leave.setUpdatedAt(LocalDateTime.now());
+
         LeaveRequest saved = leaveRequestRepository.save(leave);
         return mapper.entityToDto(saved);
     }
+
 
     private void validateApprover(User approver, LeaveRequest leave) {
         User requestedBy = leave.getRequestedBy();
