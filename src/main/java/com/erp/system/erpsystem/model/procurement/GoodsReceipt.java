@@ -1,5 +1,7 @@
 package com.erp.system.erpsystem.model.procurement;
 
+import com.erp.system.erpsystem.model.enums.ItemCondition;
+import com.erp.system.erpsystem.model.enums.QCStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -25,10 +27,13 @@ public class GoodsReceipt {
 
     private LocalDate receivedDate;
     private Integer receivedQuantity;
-    private String qcStatus;
+    @Enumerated(EnumType.STRING)
+    private QCStatus qcStatus;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "item_condition")
-    private String condition;
+    private ItemCondition condition;
+
     private String remarks;
 
     @CreatedDate
