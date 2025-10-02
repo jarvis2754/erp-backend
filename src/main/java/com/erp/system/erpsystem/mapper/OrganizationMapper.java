@@ -47,13 +47,7 @@ public class OrganizationMapper {
 
         dto.setOwner(toUserSummary(org.getOwner()));
 
-        if (org.getUsers() != null) {
-            dto.setUsers(
-                    org.getUsers().stream()
-                            .map(this::toUserSummary)
-                            .collect(Collectors.toList())
-            );
-        }
+
 
         return dto;
     }

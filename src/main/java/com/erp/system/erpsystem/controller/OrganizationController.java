@@ -21,9 +21,10 @@ public class OrganizationController {
 
     // Create Organization
     @PostMapping
-    public ResponseEntity<?> createOrganization(@RequestBody OrganizationRequestDto dto) {
+    public ResponseEntity<?> createOrganization(@RequestHeader("Authorization") String authHeader,@RequestBody OrganizationRequestDto dto) {
         try {
-            return ResponseEntity.ok(organizationService.createOrganization(dto));
+            String token = authHeader.substring(7);
+            return ResponseEntity.ok(organizationService.createOrganization(dto,token));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(e.getMessage());
@@ -52,6 +53,28 @@ public class OrganizationController {
     public ResponseEntity<?> getBranches(@PathVariable Integer orgId) {
         try {
             return ResponseEntity.ok(organizationService.getBranches(orgId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/root")
+    public ResponseEntity<?> getRoot(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String token = authHeader.substring(7);
+            return ResponseEntity.ok(organizationService.getRootCompany(token));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/root/sub")
+    public ResponseEntity<?> getRootSub(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String token = authHeader.substring(7);
+            return ResponseEntity.ok(organizationService.getSub(token));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(e.getMessage());

@@ -4,6 +4,7 @@ import com.erp.system.erpsystem.dto.attendance.AttendanceHistoryDto;
 import com.erp.system.erpsystem.dto.attendance.TodayAttendanceDto;
 import com.erp.system.erpsystem.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,11 +22,13 @@ public class AttendanceController {
     @GetMapping("/history/{userId}")
     public ResponseEntity<?> getAttendanceHistory(
             @RequestHeader("Authorization") String authHeader,
-            @PathVariable Integer userId)
+            @PathVariable Integer userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) // default 10 records per page
     {
         try {
             String token = authHeader.substring(7);
-            List<AttendanceHistoryDto> history = attendanceService.getAttendanceHistory(userId, token);
+            Page<AttendanceHistoryDto> history = attendanceService.getAttendanceHistory(userId, token, page, size);
             return ResponseEntity.ok(history);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -33,11 +36,13 @@ public class AttendanceController {
         }
     }
 
+
     // Today's attendance
-    @GetMapping("/today/{userId}")
-    public ResponseEntity<?> getTodayAttendance(@PathVariable Integer userId) {
+    @GetMapping("/today")
+    public ResponseEntity<?> getTodayAttendance(@RequestHeader("Authorization") String authHeader) {
         try {
-            TodayAttendanceDto today = attendanceService.getTodayAttendance(userId);
+            String token = authHeader.substring(7);
+            TodayAttendanceDto today = attendanceService.getTodayAttendance(token);
             return ResponseEntity.ok(today);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -46,10 +51,11 @@ public class AttendanceController {
     }
 
     // Check-in
-    @PostMapping("/checkin/{userId}")
-    public ResponseEntity<?> checkIn(@PathVariable Integer userId) {
+    @PostMapping("/checkin")
+    public ResponseEntity<?> checkIn(@RequestHeader("Authorization") String authHeader) {
         try {
-            TodayAttendanceDto response = attendanceService.checkIn(userId);
+            String token =authHeader.substring(7);
+            TodayAttendanceDto response = attendanceService.checkIn(token);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -58,10 +64,11 @@ public class AttendanceController {
     }
 
     // Check-out
-    @PostMapping("/checkout/{userId}")
-    public ResponseEntity<?> checkOut(@PathVariable Integer userId) {
+    @PostMapping("/checkout")
+    public ResponseEntity<?> checkOut(@RequestHeader("Authorization") String authHeader) {
         try {
-            TodayAttendanceDto response = attendanceService.checkOut(userId);
+            String token =authHeader.substring(7);
+            TodayAttendanceDto response = attendanceService.checkOut(token);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)

@@ -1,10 +1,14 @@
 package com.erp.system.erpsystem.dto.user;
 
+import com.erp.system.erpsystem.model.enums.ActiveStatus;
 import com.erp.system.erpsystem.model.enums.Department;
+import com.erp.system.erpsystem.model.enums.Gender;
 import com.erp.system.erpsystem.model.enums.Position;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
 
 @Data
 @AllArgsConstructor
@@ -18,4 +22,7 @@ public class UserUpdateDto {
     private String password;
     private String reportingManager;
     private String orgCode;
+    private ActiveStatus status;
+    private LocalDate dateOfBirth;
+    private Gender gender;
 }

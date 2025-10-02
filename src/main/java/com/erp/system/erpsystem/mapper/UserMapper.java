@@ -15,11 +15,14 @@ public class UserMapper {
                 user.getPhoneNumber(),
                 user.getDepartment(),
                 user.getPosition(),
+                user.getStatus(),
                 reportingManager,
                 user.getUserId(),
                 user.getUuId(),
                 user.getJoiningDate(),
-                orgId
+                orgId,
+                user.getDateOfBirth(),
+                user.getGender()
         );
 
     }
@@ -31,6 +34,9 @@ public class UserMapper {
         if (dto.getDepartment() != null) user.setDepartment(dto.getDepartment());
         if (dto.getPosition() != null) user.setPosition(dto.getPosition());
         if (dto.getPassword() != null) user.setPassword(dto.getPassword());
+        if (dto.getStatus() != null) user.setStatus(dto.getStatus());
+        if (dto.getGender() != null) user.setGender(dto.getGender());
+        if (dto.getDateOfBirth() != null) user.setDateOfBirth(dto.getDateOfBirth());
         // reportingManager handled in service using UUID
     }
 }

@@ -21,7 +21,7 @@ public class OrganizationRequestDto {
     private String currency;
     private String fiscalYear;
     private Status status;
-    private Integer branchOfId;   // Instead of full Organization object
-    private Integer ownerId;      // Instead of User object
+    private String branchOfId;   // Instead of full Organization object
+    private String ownerId;      // Instead of User object
 }
 

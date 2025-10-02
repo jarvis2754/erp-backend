@@ -16,6 +16,7 @@ public class GoodsReceiptMapper {
         dto.setQcStatus(gr.getQcStatus());
         dto.setCondition(gr.getCondition());
         dto.setRemarks(gr.getRemarks());
+        dto.setVendorId(gr.getPurchaseOrder().getVendor().getVendorId());
         return dto;
     }
 

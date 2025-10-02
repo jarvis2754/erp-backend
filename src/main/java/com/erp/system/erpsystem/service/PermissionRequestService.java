@@ -47,79 +47,72 @@ public class PermissionRequestService {
         this.jwtUtil = jwtUtil;
     }
 
-    // Create a permission request (auth token required)
+    /** CREATE PERMISSION REQUEST **/
     public PermissionRequestDto create(CreatePermissionRequestDto dto, String token) {
-        // set requester & org from token
-        dto.setRequestedById(jwtUtil.extractUserId(token));
-        dto.setOrgId(jwtUtil.extractOrgId(token));
+        Integer userId = jwtUtil.extractUserId(token);
+        Integer orgId = jwtUtil.extractOrgId(token);
 
-        User requester = userRepository.findById(dto.getRequestedById())
+        User requester = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("RequestedBy user not found"));
 
-        // block very high-level execs from creating permission requests
-        switch (requester.getPosition()) {
-            case CEO:
-            case CXO:
-            case PRESIDENT:
-            case VICE_PRESIDENT:
-                throw new RuntimeException("Users with position " + requester.getPosition() + " cannot request permissions");
-            default:
-                break;
+        if (isHighLevelPosition(requester.getPosition())) {
+            throw new RuntimeException("Users with position " + requester.getPosition() + " cannot request permissions");
         }
 
         if (dto.getEndTime().isBefore(dto.getStartTime())) {
-            throw new RuntimeException("endTime must be after startTime");
+            throw new RuntimeException("End time must be after start time");
         }
 
-        PermissionRequest entity = mapper.createDtoToEntity(dto);
-        entity.setStatus(PermissionStatus.PENDING);
-        entity.setRequestedBy(requester);
+        PermissionRequest permission = mapper.createDtoToEntity(dto);
+        permission.setRequestedBy(requester);
+        permission.setStatus(PermissionStatus.PENDING);
 
-
-        Organization org = organizationRepository.findById(dto.getOrgId())
+        Organization org = organizationRepository.findById(orgId)
                 .orElseThrow(() -> new RuntimeException("Organization not found"));
-        entity.setOrganization(org);
+        permission.setOrganization(org);
 
-        PermissionRequest saved = permissionRepository.save(entity);
-        return mapper.entityToDto(saved);
+        return mapper.entityToDto(permissionRepository.save(permission));
     }
 
-    // Get by id
+    /** GET BY ID **/
     public PermissionRequestDto getById(Integer id) {
-        PermissionRequest p = permissionRepository.findById(id)
+        return permissionRepository.findById(id)
+                .map(mapper::entityToDto)
                 .orElseThrow(() -> new RuntimeException("PermissionRequest not found with id: " + id));
-        return mapper.entityToDto(p);
     }
 
-    // List by organization with optional status filter (paged)
-    public Page<PermissionRequestDto> listByOrganization(Integer orgId, Pageable pageable, String status) {
+    /** LIST BY ORGANIZATION **/
+    public Page<PermissionRequestDto> listByOrganization(String orgCode, Pageable pageable, String status) {
         Page<PermissionRequest> page;
         if (status == null || status.isEmpty()) {
-            page = permissionRepository.findByOrganization_OrgId(orgId, pageable);
+            page = permissionRepository.findByOrganization_OrgCodeOrderByCreatedAtDesc(orgCode, pageable);
         } else {
-            PermissionStatus s;
-            try { s = PermissionStatus.valueOf(status.toUpperCase()); }
-            catch (IllegalArgumentException e) { throw new RuntimeException("Invalid permission status: " + status); }
-            page = permissionRepository.findByOrganization_OrgIdAndStatus(orgId, s, pageable);
+            PermissionStatus s = parseStatus(status);
+            page = permissionRepository.findByOrganization_OrgCodeAndStatusOrderByCreatedAtDesc(orgCode, s, pageable);
         }
         return page.map(mapper::entityToDto);
     }
 
-    // List by user
+    /** LIST BY USER **/
     public List<PermissionRequestDto> listByUser(Integer userId) {
         return permissionRepository.findByRequestedBy_UserId(userId)
                 .stream().map(mapper::entityToDto).collect(Collectors.toList());
     }
 
-    // Update (only requester may update while PENDING)
+    /** LIST BY CURRENT USER **/
+    public List<PermissionRequestDto> listByCurrentUser(String token) {
+        Integer userId = jwtUtil.extractUserId(token);
+        return permissionRepository.findByRequestedBy_UserIdOrderByCreatedAtDesc(userId)
+                .stream().map(mapper::entityToDto).collect(Collectors.toList());
+    }
+
+    /** UPDATE (only PENDING & requester) **/
     public PermissionRequestDto update(String token, Integer id, CreatePermissionRequestDto dto) {
         Integer userId = jwtUtil.extractUserId(token);
 
-        // Fetch the managed entity
         PermissionRequest existing = permissionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("PermissionRequest not found with id: " + id));
+                .orElseThrow(() -> new RuntimeException("PermissionRequest not found"));
 
-        // Authorization check
         if (!existing.getRequestedBy().getUserId().equals(userId)) {
             throw new RuntimeException("Only requester can update the permission request");
         }
@@ -129,67 +122,40 @@ public class PermissionRequestService {
         }
 
         if (dto.getStartTime() != null && dto.getEndTime() != null && dto.getEndTime().isBefore(dto.getStartTime())) {
-            throw new RuntimeException("endTime must be after startTime");
+            throw new RuntimeException("End time must be after start time");
         }
 
-        // Update fields only if provided
         if (dto.getStartTime() != null) existing.setStartTime(dto.getStartTime());
         if (dto.getEndTime() != null) existing.setEndTime(dto.getEndTime());
         if (dto.getReason() != null) existing.setReason(dto.getReason());
 
-        // Force updatedAt to current time
         existing.setUpdatedAt(LocalDateTime.now());
-
-        PermissionRequest saved = permissionRepository.save(existing);
-        return mapper.entityToDto(saved);
+        return mapper.entityToDto(permissionRepository.save(existing));
     }
 
-
+    /** CHANGE STATUS **/
     public PermissionRequestDto changeStatus(String token, Integer permissionId, UpdatePermissionStatusDto dto) {
         Integer approverId = jwtUtil.extractUserId(token);
         User approver = userRepository.findById(approverId)
                 .orElseThrow(() -> new RuntimeException("Approver not found"));
 
-        // Fetch the managed entity
         PermissionRequest permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new RuntimeException("PermissionRequest not found"));
 
-        // Authorization
-        if (!isAuthorizedToApprove(approver, permission.getRequestedBy())) {
-            throw new RuntimeException("User not authorized to approve this permission");
+        PermissionStatus newStatus = parseStatus(dto.getStatus());
+
+        if (!canApprove(approver, permission.getRequestedBy())) {
+            throw new RuntimeException("User " + approver.getUserName() + " is not authorized to approve this permission");
         }
 
-        PermissionStatus status;
-        try {
-            status = PermissionStatus.valueOf(dto.getStatus().toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeException("Invalid status: " + dto.getStatus());
-        }
-
-        permission.setStatus(status);
+        permission.setStatus(newStatus);
         permission.setApprovedBy(approver);
-
-        // Force updatedAt to current time
         permission.setUpdatedAt(LocalDateTime.now());
 
-        PermissionRequest saved = permissionRepository.save(permission);
-        return mapper.entityToDto(saved);
+        return mapper.entityToDto(permissionRepository.save(permission));
     }
 
-
-    private boolean isAuthorizedToApprove(User approver, User requester) {
-        // HR can approve any
-        if (approver.getDepartment() == Department.HR) return true;
-        // Managers can approve their department subordinates
-        if (approver.getPosition().ordinal() >= Position.MANAGER.ordinal()
-                && approver.getDepartment() == requester.getDepartment()
-                && requester.getPosition().ordinal() < approver.getPosition().ordinal()) {
-            return true;
-        }
-        return false;
-    }
-
-    // Pending approvals visible to caller
+    /** PENDING APPROVALS **/
     public List<PermissionRequestDto> pendingApprovals(String token) {
         Integer userId = jwtUtil.extractUserId(token);
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
@@ -197,22 +163,22 @@ public class PermissionRequestService {
         List<PermissionRequest> pending;
         if (user.getDepartment() == Department.HR) {
             pending = permissionRepository.findByStatus(PermissionStatus.PENDING);
-        } else if (user.getPosition().ordinal() >= Position.MANAGER.ordinal()) {
+        } else if (isManagerOrAbove(user.getPosition())) {
             pending = permissionRepository.findByRequestedBy_DepartmentAndStatus(user.getDepartment(), PermissionStatus.PENDING);
         } else {
-            pending = List.of(); // regular employees don't see others' pending requests
+            pending = List.of();
         }
 
         return pending.stream().map(mapper::entityToDto).collect(Collectors.toList());
     }
 
-    // Delete (requester or HR)
+    /** DELETE **/
     public void delete(String token, Integer id) {
         Integer userId = jwtUtil.extractUserId(token);
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
         PermissionRequest existing = permissionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("PermissionRequest not found with id: " + id));
+                .orElseThrow(() -> new RuntimeException("PermissionRequest not found"));
 
         boolean isRequester = existing.getRequestedBy().getUserId().equals(userId);
         boolean isHR = user.getDepartment() == Department.HR;
@@ -221,4 +187,53 @@ public class PermissionRequestService {
 
         permissionRepository.delete(existing);
     }
+
+    /** HELPERS **/
+    private boolean isHighLevelPosition(Position position) {
+        return switch (position) {
+            case CEO, CXO, PRESIDENT, VICE_PRESIDENT -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isManagerOrAbove(Position position) {
+        return switch (position) {
+            case MANAGER, SENIOR_MANAGER, DIRECTOR, VICE_PRESIDENT, PRESIDENT, CXO, CEO -> true;
+            default -> false;
+        };
+    }
+
+    private PermissionStatus parseStatus(String status) {
+        try {
+            return PermissionStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeException("Invalid permission status: " + status);
+        }
+    }
+
+    private boolean canApprove(User approver, User requester) {
+        Position approverPos = approver.getPosition();
+        Position requesterPos = requester.getPosition();
+
+        // HR can approve anyone only if position >= MANAGER
+        if (approver.getDepartment() == Department.HR && approverPos.ordinal() >= Position.MANAGER.ordinal()) {
+            return true;
+        }
+
+        // Director can approve anyone
+        if (approverPos == Position.DIRECTOR) {
+            return true;
+        }
+
+        // Managers or Senior Managers can approve subordinates in the same department
+        if (isManagerOrAbove(approverPos)
+                && approver.getDepartment() == requester.getDepartment()
+                && requesterPos.ordinal() < approverPos.ordinal()
+                && approverPos.ordinal() <= Position.DIRECTOR.ordinal()) { // exclude CXO, CEO
+            return true;
+        }
+
+        return false;
+    }
+
 }

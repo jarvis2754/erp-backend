@@ -1,6 +1,10 @@
 package com.erp.system.erpsystem.repository;
 
 import com.erp.system.erpsystem.model.Attendance;
+import com.erp.system.erpsystem.model.Organization;
+import com.erp.system.erpsystem.model.enums.AttendanceStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -10,7 +14,8 @@ import java.util.Optional;
 
 @Repository
 public interface AttendanceRepository extends JpaRepository<Attendance,Integer> {
-    List<Attendance> findByUser_UserIdOrderByDateDesc(Integer id);
-    Optional<Attendance> findByUser_UserIdAndDate(Integer id, LocalDate date);
 
+    Optional<Attendance> findByUser_UserIdAndDate(Integer id, LocalDate date);
+    int countByDateAndStatusAndUserOrganization(LocalDate date, AttendanceStatus status, Organization organization);
+    Page<Attendance> findByUser_UserIdOrderByDateDesc(Integer userId, Pageable pageable);
 }

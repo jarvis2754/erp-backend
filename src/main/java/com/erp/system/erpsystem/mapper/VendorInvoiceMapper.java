@@ -1,6 +1,7 @@
 package com.erp.system.erpsystem.mapper;
 
 import com.erp.system.erpsystem.dto.vendorinvoice.CreateVendorInvoiceDto;
+import com.erp.system.erpsystem.dto.vendorinvoice.PdfVendorInvoiceDto;
 import com.erp.system.erpsystem.dto.vendorinvoice.VendorInvoiceDto;
 import com.erp.system.erpsystem.model.procurement.GoodsReceipt;
 import com.erp.system.erpsystem.model.procurement.PurchaseOrder;
@@ -21,6 +22,24 @@ public class VendorInvoiceMapper {
         dto.setGrnId(vi.getGoodsReceipt() != null ? vi.getGoodsReceipt().getGrnId() : null);
         dto.setCreatedAt(vi.getCreatedAt());
         dto.setUpdatedAt(vi.getUpdatedAt());
+        return dto;
+    }
+
+    public static PdfVendorInvoiceDto toPdfDto(VendorInvoice vi) {
+        PdfVendorInvoiceDto dto = new PdfVendorInvoiceDto();
+        dto.setInvoiceId(vi.getInvoiceId());
+        dto.setInvoiceAmount(vi.getInvoiceAmount());
+        dto.setTaxDetails(vi.getTaxDetails());
+        dto.setInvoiceDate(vi.getInvoiceDate());
+        dto.setStatus(vi.getStatus());
+        dto.setVendorId(vi.getVendor() != null ? vi.getVendor().getVendorId() : null);
+        dto.setPoId(vi.getPurchaseOrder() != null ? vi.getPurchaseOrder().getPoId() : null);
+        dto.setGrnId(vi.getGoodsReceipt() != null ? vi.getGoodsReceipt().getGrnId() : null);
+        dto.setCreatedAt(vi.getCreatedAt());
+        dto.setUpdatedAt(vi.getUpdatedAt());
+        dto.setVendorName(vi.getVendor().getName());
+        dto.setVendorContact(vi.getVendor().getEmail());
+        dto.setVendorAddress(vi.getVendor().getAddress());
         return dto;
     }
 

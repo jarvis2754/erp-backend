@@ -1,6 +1,8 @@
 package com.erp.system.erpsystem.model;
 
+import com.erp.system.erpsystem.model.enums.ActiveStatus;
 import com.erp.system.erpsystem.model.enums.Department;
+import com.erp.system.erpsystem.model.enums.Gender;
 import com.erp.system.erpsystem.model.enums.Position;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
@@ -47,6 +49,11 @@ public class User {
     private String phoneNumber;
 
     @Enumerated(EnumType.STRING)
+    private Gender gender;
+
+    private LocalDate dateOfBirth;
+
+    @Enumerated(EnumType.STRING)
     private Department department;
 
     @ManyToOne
@@ -66,6 +73,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Position position;
+
+    @Enumerated(EnumType.STRING)
+    private ActiveStatus status =ActiveStatus.ACTIVE;
 
     @ManyToOne
     @JoinColumn(name = "organization_id", foreignKey = @ForeignKey(name = "fk_user_org"))

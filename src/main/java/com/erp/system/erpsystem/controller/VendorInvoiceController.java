@@ -70,6 +70,20 @@ public class VendorInvoiceController {
         }
     }
 
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<?> generatePdf(@RequestHeader("Authorization") String authHeader, @PathVariable Integer id) {
+        try {
+            String token =authHeader.substring(7);
+            byte[] pdf = viService.generateVendorInvoicePdf(id,token);
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/pdf")
+                    .header("Content-Disposition", "attachment; filename=po-" + id + ".pdf")
+                    .body(pdf);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+    }
+
     // Basic runtime exception handler
     private ResponseEntity<Map<String, String>> errorResponse(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

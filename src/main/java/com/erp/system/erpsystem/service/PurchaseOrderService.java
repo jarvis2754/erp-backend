@@ -13,14 +13,12 @@ import com.erp.system.erpsystem.model.procurement.Vendor;
 import com.erp.system.erpsystem.repository.*;
 import com.erp.system.erpsystem.utils.JwtUtil;
 import com.erp.system.erpsystem.utils.PurchaseOrderUtils;
-import com.itextpdf.text.BaseColor;
+
 import com.lowagie.text.*;
 import com.lowagie.text.Font;
-import com.lowagie.text.Image;
-import com.lowagie.text.Rectangle;
-import com.lowagie.text.pdf.PdfPCell;
+
 import com.lowagie.text.pdf.PdfPTable;
-import com.lowagie.text.pdf.PdfPageEventHelper;
+
 import com.lowagie.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -38,7 +36,9 @@ public class PurchaseOrderService {
     private final PurchaseRequisitionRepository prRepository;
     private final OrganizationRepository orgRepository;
     private final UserRepository userRepository;
-    private final JwtUtil jwtUtil; // custom service to parse claims
+    private final JwtUtil jwtUtil;
+
+    /** --- Helper Methods --- **/
 
     private User getCurrentUser(String token) {
         Integer userId = jwtUtil.extractUserId(token);
@@ -46,53 +46,82 @@ public class PurchaseOrderService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
+    private boolean isManagerOrAbove(Position position) {
+        return switch (position) {
+            case LEAD, MANAGER, SENIOR_MANAGER, DIRECTOR, VICE_PRESIDENT, PRESIDENT, CXO, CEO -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isTopManagement(Position position) {
+        return switch (position) {
+            case DIRECTOR, VICE_PRESIDENT, PRESIDENT, CXO, CEO -> true;
+            default -> false;
+        };
+    }
+
+    private boolean canCreatePO(User user) {
+        return user.getDepartment() == Department.PROCUREMENT &&
+                (user.getPosition() == Position.EXECUTIVE
+                        || user.getPosition() == Position.SENIOR_EXECUTIVE
+                        || isManagerOrAbove(user.getPosition()));
+    }
+
+    private boolean canViewPO(User user, PurchaseOrder po) {
+        return user.getDepartment() == Department.PROCUREMENT
+                || user.getDepartment() == Department.FINANCE
+                || (user.getDepartment() == Department.OPERATIONS && isManagerOrAbove(user.getPosition()))
+                || isTopManagement(user.getPosition())
+                || (po.getPurchaseRequisition() != null &&
+                po.getPurchaseRequisition().getRequestedBy().getUserId().equals(user.getUserId()));
+    }
+
+    private boolean canApprovePO(User user) {
+        return (user.getDepartment() == Department.PROCUREMENT
+                || user.getDepartment() == Department.FINANCE)&& isManagerOrAbove(user.getPosition());
+    }
+
+    /** --- Service Methods --- **/
+
     public List<PurchaseOrderDto> getAllForUser(String token, Integer orgId) {
         User user = getCurrentUser(token);
-        if (orgId == null) {
-            orgId = jwtUtil.extractOrgId(token);
-        }
-        if (user.getDepartment() == Department.PROCUREMENT || isManagerOrAbove(user.getPosition())) {
+        if (orgId == null) orgId = jwtUtil.extractOrgId(token);
+
+        if (user.getDepartment() == Department.PROCUREMENT
+                || user.getDepartment() == Department.FINANCE
+                || (user.getDepartment() == Department.ADMINISTRATION && isManagerOrAbove(user.getPosition()))
+                || isTopManagement(user.getPosition())) {
             return purchaseOrderRepository.findByOrg_OrgId(orgId)
-                    .stream()
-                    .map(PurchaseOrderMapper::toDto)
-                    .toList();
+                    .stream().map(PurchaseOrderMapper::toDto).toList();
         }
 
-        // employee → only see their own PR-linked POs
         return purchaseOrderRepository.findByPurchaseRequisition_RequestedBy(user)
-                .stream()
-                .map(PurchaseOrderMapper::toDto)
-                .toList();
+                .stream().map(PurchaseOrderMapper::toDto).toList();
     }
 
     public PurchaseOrderDto getById(Integer id, String token) {
-        User user = userRepository
-                .findById(jwtUtil.extractUserId(token))
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
+        User user = getCurrentUser(token);
         PurchaseOrder po = purchaseOrderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Purchase Order not found"));
-        if (!(user.getDepartment() == Department.PROCUREMENT || isManagerOrAbove(user.getPosition()))
-                || !(user.getUserId().equals(po.getPurchaseRequisition().getRequestedBy().getUserId()))) {
-            throw new RuntimeException("Unauthorized: Only procurement or manager+ can create POs");
+
+        if (!canViewPO(user, po)) {
+            throw new RuntimeException("Unauthorized: cannot view this PO");
         }
+
         return PurchaseOrderMapper.toDto(po);
     }
 
     public PurchaseOrderDto create(CreatePurchaseOrderDto dto, String token) {
         User user = getCurrentUser(token);
-        if (!(user.getDepartment() == Department.PROCUREMENT || isManagerOrAbove(user.getPosition()))) {
-            throw new RuntimeException("Unauthorized: Only procurement or manager+ can create POs");
+        if (!canCreatePO(user)) {
+            throw new RuntimeException("Unauthorized: only Procurement Exec+ can create POs");
         }
 
         Vendor vendor = vendorRepository.findById(dto.getVendorId())
                 .orElseThrow(() -> new RuntimeException("Vendor not found"));
         PurchaseRequisition pr = prRepository.findById(dto.getPrId())
                 .orElseThrow(() -> new RuntimeException("Purchase Requisition not found"));
-
-        dto.setOrgId(jwtUtil.extractOrgId(token));
-
-        Organization org = orgRepository.findById(dto.getOrgId())
+        Organization org = orgRepository.findById(jwtUtil.extractOrgId(token))
                 .orElseThrow(() -> new RuntimeException("Organization not found"));
 
         PurchaseOrder po = PurchaseOrderMapper.toEntity(dto, vendor, pr, org);
@@ -101,26 +130,28 @@ public class PurchaseOrderService {
 
     public PurchaseOrderDto updateStatus(Integer id, String status, String token) {
         User user = getCurrentUser(token);
-        if (!(user.getDepartment() == Department.PROCUREMENT || isManagerOrAbove(user.getPosition()))) {
-            throw new RuntimeException("Unauthorized: Only procurement or manager+ can update POs");
+        if (!canApprovePO(user)) {
+            throw new RuntimeException("Unauthorized: cannot approve/update PO");
         }
 
         PurchaseOrder po = purchaseOrderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Purchase Order not found"));
-        po.setStatus(POStatus.valueOf(status.toUpperCase()));
+        try {
+            po.setStatus(POStatus.valueOf(status.toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid PO status: " + status);
+        }
+
         return PurchaseOrderMapper.toDto(purchaseOrderRepository.save(po));
     }
-
 
     public byte[] generatePdf(Integer id, String token) {
         PurchaseOrder po = purchaseOrderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Purchase Order not found"));
-        User user = userRepository
-                .findById(jwtUtil.extractUserId(token))
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        if (!(user.getDepartment() == Department.PROCUREMENT || isManagerOrAbove(user.getPosition())
-                || user.getUserId().equals(po.getPurchaseRequisition().getRequestedBy().getUserId()))) {
-            throw new RuntimeException("Unauthorized: Only procurement or manager+ can create POs");
+        User user = getCurrentUser(token);
+
+        if (!canViewPO(user, po)) {
+            throw new RuntimeException("Unauthorized: cannot generate PDF for this PO");
         }
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -154,6 +185,9 @@ public class PurchaseOrderService {
             infoTable.addCell(PurchaseOrderUtils.getBorderedCell("Vendor:", true));
             infoTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getVendor().getName(), false));
 
+            infoTable.addCell(PurchaseOrderUtils.getBorderedCell("Organization:", true));
+            infoTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getOrg().getOrgName(), false));
+
             infoTable.addCell(PurchaseOrderUtils.getBorderedCell("Created At:", true));
             infoTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getCreatedAt().toString(), false));
 
@@ -172,11 +206,11 @@ public class PurchaseOrderService {
                 reqTable.setSpacingBefore(10);
                 reqTable.setWidths(new int[]{2, 5, 2});
 
-                reqTable.addCell(PurchaseOrderUtils.getHeaderCell("Requisition ID"));
+                reqTable.addCell(PurchaseOrderUtils.getHeaderCell("Item"));
                 reqTable.addCell(PurchaseOrderUtils.getHeaderCell("Requested By"));
                 reqTable.addCell(PurchaseOrderUtils.getHeaderCell("Quantity"));
 
-                reqTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getPurchaseRequisition().getPrId().toString(), false));
+                reqTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getPurchaseRequisition().getItemName(), false));
                 reqTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getPurchaseRequisition().getRequestedBy().getUserName(), false));
                 reqTable.addCell(PurchaseOrderUtils.getBorderedCell(po.getPurchaseRequisition().getQuantity().toString(), false));
 
@@ -200,16 +234,8 @@ public class PurchaseOrderService {
             document.close();
             return baos.toByteArray();
         } catch (Exception e) {
-            throw new RuntimeException("Error generating PDF: " + e.getMessage());
+            throw new RuntimeException("Error generating PDF: " + e.getMessage(), e);
         }
     }
 
-
-
-    private boolean isManagerOrAbove(Position position) {
-        return switch (position) {
-            case MANAGER, SENIOR_MANAGER, DIRECTOR, VICE_PRESIDENT, PRESIDENT, CXO, CEO -> true;
-            default -> false;
-        };
-    }
 }

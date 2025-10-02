@@ -10,6 +10,10 @@ import com.erp.system.erpsystem.repository.AttendanceRepository;
 import com.erp.system.erpsystem.repository.UserRepository;
 import com.erp.system.erpsystem.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -28,61 +32,42 @@ public class AttendanceService {
     @Autowired
     private JwtUtil jwtUtil;
 
-    // Attendance history
-    public List<AttendanceHistoryDto> getAttendanceHistory(Integer userId, String token) {
+    public Page<AttendanceHistoryDto> getAttendanceHistory(Integer userId, String token, int page, int size) {
         User requester = userRepository.findById(jwtUtil.extractUserId(token))
                 .orElseThrow(() -> new RuntimeException("User not found"));
         User targetUser = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Employee can view own record
-        if (requester.getUserId().equals(userId)) return fetchAttendance(targetUser);
+        // Authorization logic
+        if (requester.getUserId().equals(userId) ||
+                (requester.getPosition() == Position.LEAD && targetUser.getReportingManager().equals(requester)) ||
+                (requester.getPosition() == Position.MANAGER && requester.getDepartment().equals(targetUser.getDepartment())) ||
+                requester.getPosition().ordinal() >= Position.DIRECTOR.ordinal()) {
 
-        // Lead can view only direct reports
-        if (requester.getPosition() == Position.LEAD &&
-                !targetUser.getReportingManager().equals(requester)) {
-            throw new RuntimeException("Leads can view only their team members");
-        }
+            Pageable pageable = PageRequest.of(page, size);
+            Page<Attendance> attendancePage = attendanceRepository.findByUser_UserIdOrderByDateDesc(userId, pageable);
 
-        // Manager can view department members
-        if (requester.getPosition() == Position.MANAGER &&
-                !requester.getDepartment().equals(targetUser.getDepartment())) {
-            throw new RuntimeException("Managers can view only their department");
-        }
-
-        // Director+ can view all
-        if (requester.getPosition().ordinal() >= Position.DIRECTOR.ordinal()) {
-            return fetchAttendance(targetUser);
+            // Map Attendance -> AttendanceHistoryDto
+            return attendancePage.map(attendance -> new AttendanceHistoryDto(
+                    attendance.getDate(),
+                    attendance.getCheckIn(),
+                    attendance.getCheckOut(),
+                    attendance.getWorkHours(),
+                    attendance.getStatus()
+            ));
         }
 
         throw new RuntimeException("You are not authorized to view this attendance");
     }
 
-    private List<AttendanceHistoryDto> fetchAttendance(User user) {
-        List<Attendance> records = attendanceRepository.findByUser_UserIdOrderByDateDesc(user.getUserId());
-        return records.stream().map(a -> {
-            double workHours = 0;
-            if (a.getCheckIn() != null && a.getCheckOut() != null) {
-                Duration duration = Duration.between(a.getCheckIn(), a.getCheckOut());
-                workHours = duration.toMinutes() / 60.0;
-            }
-            return new AttendanceHistoryDto(
-                    a.getDate(),
-                    a.getCheckIn() != null ? a.getCheckIn().toLocalTime() : null,
-                    a.getCheckOut() != null ? a.getCheckOut().toLocalTime() : null,
-                    workHours,
-                    a.getStatus()
-            );
-        }).toList();
-    }
 
     // Today's attendance
-    public TodayAttendanceDto getTodayAttendance(Integer userId) {
-        User user = userRepository.findById(userId)
+    public TodayAttendanceDto getTodayAttendance(String token) {
+        User user = userRepository.findById(jwtUtil.extractUserId(token))
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         LocalDate today = LocalDate.now();
-        Attendance attendance = attendanceRepository.findByUser_UserIdAndDate(userId, today).orElse(null);
+        Attendance attendance = attendanceRepository.findByUser_UserIdAndDate(jwtUtil.extractUserId(token), today).orElse(null);
 
         if (attendance == null) {
             return new TodayAttendanceDto("Not Checked In", null, null);
@@ -94,13 +79,14 @@ public class AttendanceService {
     }
 
     // Check-in
-    public TodayAttendanceDto checkIn(Integer userId) {
+    public TodayAttendanceDto checkIn(String token) {
+        Integer userId = jwtUtil.extractUserId(token);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         // Only operational staff can check-in
         switch (user.getPosition()) {
-            case INTERN, ASSOCIATE, EXECUTIVE, SENIOR_EXECUTIVE, LEAD -> { /* allowed */ }
+            case INTERN, ASSOCIATE, EXECUTIVE, SENIOR_EXECUTIVE, LEAD,MANAGER,SENIOR_MANAGER -> { /* allowed */ }
             default -> throw new RuntimeException("Your role cannot mark attendance");
         }
 
@@ -121,13 +107,14 @@ public class AttendanceService {
     }
 
     // Check-out
-    public TodayAttendanceDto checkOut(Integer userId) {
+    public TodayAttendanceDto checkOut(String token) {
+        Integer userId= jwtUtil.extractUserId(token);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         // Only operational staff can check-out
         switch (user.getPosition()) {
-            case INTERN, ASSOCIATE, EXECUTIVE, SENIOR_EXECUTIVE, LEAD -> { /* allowed */ }
+            case INTERN, ASSOCIATE, EXECUTIVE, SENIOR_EXECUTIVE, LEAD, MANAGER, SENIOR_MANAGER -> { /* allowed */ }
             default -> throw new RuntimeException("Your role cannot mark attendance");
         }
 
@@ -137,6 +124,13 @@ public class AttendanceService {
 
         if (attendance.getCheckOut() == null) {
             attendance.setCheckOut(java.time.LocalDateTime.now());
+
+            double workHours = 0;
+
+            if (attendance.getCheckIn() != null && attendance.getCheckOut() != null) {
+                workHours = Duration.between(attendance.getCheckIn(), attendance.getCheckOut()).toMinutes() / 60.0;
+            }
+            attendance.setWorkHours(workHours);
             attendanceRepository.save(attendance);
             return new TodayAttendanceDto("Completed", attendance.getCheckIn().toLocalTime(), attendance.getCheckOut().toLocalTime());
         } else {

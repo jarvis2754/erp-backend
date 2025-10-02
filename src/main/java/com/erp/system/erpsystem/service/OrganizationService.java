@@ -5,8 +5,10 @@ import com.erp.system.erpsystem.dto.organization.OrganizationResponseDto;
 import com.erp.system.erpsystem.mapper.OrganizationMapper;
 import com.erp.system.erpsystem.model.Organization;
 import com.erp.system.erpsystem.model.User;
+import com.erp.system.erpsystem.model.enums.Status;
 import com.erp.system.erpsystem.repository.OrganizationRepository;
 import com.erp.system.erpsystem.repository.UserRepository;
+import com.erp.system.erpsystem.utils.JwtUtil;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -17,31 +19,66 @@ public class OrganizationService {
     private final OrganizationRepository organizationRepository;
     private final UserRepository userRepository;
     private final OrganizationMapper mapper;
+    private final JwtUtil jwtUtil;
 
     public OrganizationService(OrganizationRepository organizationRepository,
                                UserRepository userRepository,
-                               OrganizationMapper mapper) {
+                               OrganizationMapper mapper,
+                               JwtUtil jwtUtil) {
         this.organizationRepository = organizationRepository;
         this.userRepository = userRepository;
         this.mapper = mapper;
+        this.jwtUtil =jwtUtil;
     }
 
+
+    public OrganizationResponseDto getRootCompany(String token) {
+
+        Organization org = organizationRepository.findById(jwtUtil.extractOrgId(token))
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        while (org.getBranchOf() != null) {
+            org = org.getBranchOf();  // move up to parent
+        }
+
+        return mapper.toDto(org); // This is the top-most parent
+    }
+
+    public List<OrganizationResponseDto> getSub(String token) {
+
+        Organization orgRoot = organizationRepository.findById(jwtUtil.extractOrgId(token))
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        while (orgRoot.getBranchOf() != null) {
+            orgRoot = orgRoot.getBranchOf();  // move up to parent
+        }
+        List<OrganizationResponseDto> allSubs = orgRoot.getBranches().stream().map(mapper::toDto).toList();
+
+        return allSubs; // This is the top-most parent
+    }
+
+
     // Create Organization
-    public OrganizationResponseDto createOrganization(OrganizationRequestDto dto) {
+    public OrganizationResponseDto createOrganization(OrganizationRequestDto dto,String token) {
         Organization branchOf = null;
         User owner = null;
 
         if (dto.getBranchOfId() != null) {
-            branchOf = organizationRepository.findById(dto.getBranchOfId())
+            branchOf = organizationRepository.findByOrgCode(dto.getBranchOfId())
                     .orElseThrow(() -> new RuntimeException("BranchOf Organization not found"));
         }
 
         if (dto.getOwnerId() != null) {
-            owner = userRepository.findById(dto.getOwnerId())
+            owner = userRepository.findByUuId(dto.getOwnerId())
+                    .orElseThrow(() -> new RuntimeException("Owner not found"));
+        }else{
+            OrganizationResponseDto organizationResponseDto = getRootCompany(token);
+            owner = userRepository.findById(organizationResponseDto.getOrgId())
                     .orElseThrow(() -> new RuntimeException("Owner not found"));
         }
 
         Organization org = mapper.toEntity(dto, branchOf, owner);
+        org.setStatus(Status.ACTIVE);
         Organization saved = organizationRepository.save(org);
         return mapper.toDto(saved);
     }
@@ -86,13 +123,13 @@ public class OrganizationService {
 
         // Update relationships
         if (dto.getBranchOfId() != null) {
-            Organization branchOf = organizationRepository.findById(dto.getBranchOfId())
+            Organization branchOf = organizationRepository.findByOrgCode(dto.getBranchOfId())
                     .orElseThrow(() -> new RuntimeException("BranchOf Organization not found"));
             existing.setBranchOf(branchOf);
         }
 
         if (dto.getOwnerId() != null) {
-            User owner = userRepository.findById(dto.getOwnerId())
+            User owner = userRepository.findByUuId(dto.getOwnerId())
                     .orElseThrow(() -> new RuntimeException("Owner not found"));
             existing.setOwner(owner);
         }
@@ -109,5 +146,7 @@ public class OrganizationService {
         organizationRepository.delete(org);
     }
 
-    public Organization registerOrganization(Organization organization) { return organizationRepository.save(organization); }
+    public Organization registerOrganization(Organization organization) {
+        return organizationRepository.save(organization);
+    }
 }

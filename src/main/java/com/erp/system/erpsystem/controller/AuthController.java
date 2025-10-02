@@ -2,6 +2,8 @@ package com.erp.system.erpsystem.controller;
 
 import com.erp.system.erpsystem.dto.auth.LoginRequestDTO;
 import com.erp.system.erpsystem.dto.auth.SignUpOrganizationDto;
+import com.erp.system.erpsystem.dto.user.UserDto;
+import com.erp.system.erpsystem.mapper.UserMapper;
 import com.erp.system.erpsystem.model.Organization;
 import com.erp.system.erpsystem.model.User;
 import com.erp.system.erpsystem.model.enums.Department;
@@ -44,13 +46,12 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<?> register(@RequestBody SignUpOrganizationDto userDTO) {
         try {
-            // Check if user email already exists
+
             if (userService.findByEmailId(userDTO.getUser().getEmail()) != null) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                         .body(Map.of("message", "Email already in use"));
             }
 
-            // Register organization
             Organization organization = orgService.registerOrganization(OrganizationUtils.getOrganization(userDTO));
 
             // Register user
@@ -96,9 +97,13 @@ public class AuthController {
 
             String token = jwtUtil.generateToken(user);
 
+            UserDto userDto = UserMapper.toDto(user);
+
             return ResponseEntity.ok(Map.of(
                     "status", "SUCCESS",
-                    "token", token
+                    "token", token,
+                    "user",userDto
+
             ));
 
         } catch (BadCredentialsException e) {

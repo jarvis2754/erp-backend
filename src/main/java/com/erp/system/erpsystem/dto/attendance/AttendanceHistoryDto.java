@@ -5,14 +5,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Data
 @AllArgsConstructor
 public class AttendanceHistoryDto {
     private LocalDate date;
-    private LocalTime checkIn;
-    private LocalTime checkOut;
-    private double workHours; // e.g., 8.75
+    private LocalDateTime checkIn;
+    private LocalDateTime checkOut;
+    private Double workHours; // e.g., 8.75
     private AttendanceStatus status; // Present, Absent, Leave
 }

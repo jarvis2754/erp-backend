@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 
+import java.time.LocalDate;
 import java.util.List;
 
 
@@ -20,15 +21,21 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
     List<LeaveRequest> findByOrganization_OrgId(Integer orgId);
 
 
-    Page<LeaveRequest> findByOrganization_OrgId(Integer orgId, Pageable pageable);
+    Page<LeaveRequest> findByOrganization_OrgCodeOrderByCreatedAtDesc(String orgId, Pageable pageable);
 
 
     List<LeaveRequest> findByRequestedBy_UserId(Integer userId);
+    List<LeaveRequest> findByRequestedBy_UserIdOrderByCreatedAtDesc(Integer userId);
 
 
     List<LeaveRequest> findByStatus(LeaveStatus status);
 
-    Page<LeaveRequest> findByOrganization_OrgIdAndStatus(Integer orgId, LeaveStatus status, Pageable pageable);
+    Page<LeaveRequest> findByOrganization_OrgCodeAndStatusOrderByCreatedAtDesc(String orgId, LeaveStatus status, Pageable pageable);
 
     List<LeaveRequest> findByRequestedBy_DepartmentAndStatus(Department department, LeaveStatus status);
+    List<LeaveRequest> findByRequestedByUserIdAndStatusAndStartDateAfter(
+            Integer userId, LeaveStatus status, LocalDate startDate
+    );
+
+    int countByOrganizationOrgIdAndStatus(Integer orgId,LeaveStatus status);
 }

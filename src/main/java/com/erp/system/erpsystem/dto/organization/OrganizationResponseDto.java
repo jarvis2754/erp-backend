@@ -30,5 +30,5 @@ public class OrganizationResponseDto {
     private OrganizationSummaryDto branchOf;           // Parent org
     private List<OrganizationSummaryDto> branches;     // Sub-branches
     private UserSummaryDto owner;                      // Owner
-    private List<UserSummaryDto> users;
+
 }

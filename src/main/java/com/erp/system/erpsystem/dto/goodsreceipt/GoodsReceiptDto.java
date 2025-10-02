@@ -15,5 +15,7 @@ public class GoodsReceiptDto {
     private QCStatus qcStatus;
     private ItemCondition condition;
     private String remarks;
+    private Integer vendorId;
+    
 }
 

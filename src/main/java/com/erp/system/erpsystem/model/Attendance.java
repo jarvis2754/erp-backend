@@ -34,6 +34,8 @@ public class Attendance {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+    @Column(name = "work_hours")
+    private Double workHours;
 
     @Column(nullable = false)
     private LocalDate date;
@@ -47,6 +49,5 @@ public class Attendance {
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false, foreignKey = @ForeignKey(name = "fk_attendance_user"))
     private User user;
-
 
 }

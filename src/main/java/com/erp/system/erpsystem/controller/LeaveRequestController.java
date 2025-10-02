@@ -4,6 +4,7 @@ import com.erp.system.erpsystem.dto.leave.CreateLeaveRequestDto;
 import com.erp.system.erpsystem.dto.leave.LeaveRequestDto;
 import com.erp.system.erpsystem.dto.leave.UpdateLeaveStatusDto;
 import com.erp.system.erpsystem.service.LeaveRequestService;
+import com.erp.system.erpsystem.utils.JwtUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -20,10 +21,12 @@ import java.util.List;
 public class LeaveRequestController {
 
     private final LeaveRequestService leaveRequestService;
+    private final JwtUtil jwtUtil;
 
     @Autowired
-    public LeaveRequestController(LeaveRequestService leaveRequestService) {
+    public LeaveRequestController(LeaveRequestService leaveRequestService,JwtUtil jwtUtil) {
         this.leaveRequestService = leaveRequestService;
+        this.jwtUtil =jwtUtil;
     }
 
     @PostMapping("/orgs/leaves")
@@ -39,7 +42,7 @@ public class LeaveRequestController {
     }
 
     @GetMapping("/orgs/{orgId}/leaves")
-    public ResponseEntity<Page<LeaveRequestDto>> listByOrg(@PathVariable Integer orgId,
+    public ResponseEntity<Page<LeaveRequestDto>> listByOrg(@PathVariable String orgId,
                                                            @RequestParam(defaultValue = "0") int page,
                                                            @RequestParam(defaultValue = "20") int size,
                                                            @RequestParam(required = false) String status) {
@@ -58,8 +61,23 @@ public class LeaveRequestController {
     }
 
     @GetMapping("/users/{userId}/leaves")
-    public ResponseEntity<List<LeaveRequestDto>> listByUser(@PathVariable Integer userId) {
-        return ResponseEntity.ok(leaveRequestService.listByUser(userId));
+    public ResponseEntity<?> listByUser(@PathVariable Integer userId) {
+        try {
+            return ResponseEntity.ok(leaveRequestService.listByUser(userId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+
+    }
+
+    @GetMapping("/users/history")
+    public ResponseEntity<?> listCurrentUserAttendance(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String token =authHeader.substring(7);
+            return ResponseEntity.ok(leaveRequestService.listByCurrentUser(jwtUtil.extractUserId(token)));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
     }
 
     @PutMapping("/leaves/{id}")
@@ -69,11 +87,15 @@ public class LeaveRequestController {
     }
 
     @PatchMapping("/leaves/{id}/status")
-    public ResponseEntity<LeaveRequestDto> changeStatus(@RequestHeader("Authorization") String authHeader,
+    public ResponseEntity<?> changeStatus(@RequestHeader("Authorization") String authHeader,
                                                         @PathVariable Integer id,
                                                         @Valid @RequestBody UpdateLeaveStatusDto dto) {
-        String token = authHeader.substring(7);
-        return ResponseEntity.ok(leaveRequestService.changeStatus(token, id, dto));
+        try {
+            String token = authHeader.substring(7);
+            return ResponseEntity.ok(leaveRequestService.changeStatus(token, id, dto));
+        }catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/leaves/pending")

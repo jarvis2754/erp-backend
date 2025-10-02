@@ -47,71 +47,66 @@ public class LeaveRequestService {
         this.jwtUtil = jwtUtil;
     }
 
+    /** CREATE LEAVE REQUEST **/
     public LeaveRequestDto create(CreateLeaveRequestDto dto, String token) {
-        dto.setRequestedById(jwtUtil.extractUserId(token));
-        dto.setOrgId(jwtUtil.extractOrgId(token));
+        Integer userId = jwtUtil.extractUserId(token);
+        Integer orgId = jwtUtil.extractOrgId(token);
 
-        // Fetch the user
-        User requester = userRepository.findById(dto.getRequestedById())
+        User requester = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("RequestedBy user not found"));
 
-        // Restrict leave creation for high-level positions
-        switch (requester.getPosition()) {
-            case CEO:
-            case CXO:
-            case VICE_PRESIDENT:
-            case PRESIDENT:
-                throw new RuntimeException("Users with position " + requester.getPosition() + " cannot request leave");
-            default:
-                break;
+        // Restrict high-level positions from requesting leave
+        if (isHighLevelPosition(requester.getPosition())) {
+            throw new RuntimeException("Users with position " + requester.getPosition() + " cannot request leave");
         }
 
         if (dto.getEndDate().isBefore(dto.getStartDate())) {
-            throw new RuntimeException("endDate must be after or equal to startDate");
+            throw new RuntimeException("End date must be after or equal to start date");
         }
 
-        LeaveRequest entity = mapper.createDtoToEntity(dto);
-        entity.setStatus(LeaveStatus.PENDING);
-        entity.setRequestedBy(requester);
+        LeaveRequest leave = mapper.createDtoToEntity(dto);
+        leave.setRequestedBy(requester);
+        leave.setStatus(LeaveStatus.PENDING);
 
-        Organization org = organizationRepository.findById(dto.getOrgId())
+        Organization org = organizationRepository.findById(orgId)
                 .orElseThrow(() -> new RuntimeException("Organization not found"));
-        entity.setOrganization(org);
+        leave.setOrganization(org);
 
-        LeaveRequest saved = leaveRequestRepository.save(entity);
-        return mapper.entityToDto(saved);
+        return mapper.entityToDto(leaveRequestRepository.save(leave));
     }
 
-
+    /** GET BY ID **/
     public LeaveRequestDto getById(Integer id) {
-        LeaveRequest lr = leaveRequestRepository.findById(id)
+        return leaveRequestRepository.findById(id)
+                .map(mapper::entityToDto)
                 .orElseThrow(() -> new RuntimeException("LeaveRequest not found with id: " + id));
-        return mapper.entityToDto(lr);
     }
 
-    public Page<LeaveRequestDto> listByOrganization(Integer orgId, Pageable pageable, String status) {
+    /** LIST BY ORGANIZATION **/
+    public Page<LeaveRequestDto> listByOrganization(String orgCode, Pageable pageable, String status) {
         Page<LeaveRequest> page;
-
         if (status == null || status.isEmpty()) {
-            page = leaveRequestRepository.findByOrganization_OrgId(orgId, pageable);
+            page = leaveRequestRepository.findByOrganization_OrgCodeOrderByCreatedAtDesc(orgCode, pageable);
         } else {
-            LeaveStatus leaveStatus;
-            try {
-                leaveStatus = LeaveStatus.valueOf(status.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new RuntimeException("Invalid leave status: " + status);
-            }
-            page = leaveRequestRepository.findByOrganization_OrgIdAndStatus(orgId, leaveStatus, pageable);
+            LeaveStatus leaveStatus = parseLeaveStatus(status);
+            page = leaveRequestRepository.findByOrganization_OrgCodeAndStatusOrderByCreatedAtDesc(orgCode, leaveStatus, pageable);
         }
-
         return page.map(mapper::entityToDto);
     }
 
+    /** LIST BY USER **/
     public List<LeaveRequestDto> listByUser(Integer userId) {
         return leaveRequestRepository.findByRequestedBy_UserId(userId)
                 .stream().map(mapper::entityToDto).collect(Collectors.toList());
     }
 
+    /** LIST BY CURRENT USER **/
+    public List<LeaveRequestDto> listByCurrentUser(Integer userId) {
+        return leaveRequestRepository.findByRequestedBy_UserIdOrderByCreatedAtDesc(userId)
+                .stream().map(mapper::entityToDto).collect(Collectors.toList());
+    }
+
+    /** UPDATE LEAVE REQUEST **/
     public LeaveRequestDto update(Integer id, CreateLeaveRequestDto dto) {
         LeaveRequest existing = leaveRequestRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("LeaveRequest not found with id: " + id));
@@ -121,14 +116,11 @@ public class LeaveRequestService {
         if (dto.getReason() != null) existing.setReason(dto.getReason());
         if (dto.getLeaveType() != null) existing.setLeaveType(dto.getLeaveType());
 
-        // Force updatedAt to current timestamp
         existing.setUpdatedAt(LocalDateTime.now());
-
-        LeaveRequest saved = leaveRequestRepository.save(existing);
-        return mapper.entityToDto(saved);
+        return mapper.entityToDto(leaveRequestRepository.save(existing));
     }
 
-
+    /** CHANGE STATUS **/
     public LeaveRequestDto changeStatus(String token, Integer leaveId, UpdateLeaveStatusDto dto) {
         Integer approverId = jwtUtil.extractUserId(token);
         User approver = userRepository.findById(approverId)
@@ -137,53 +129,37 @@ public class LeaveRequestService {
         LeaveRequest leave = leaveRequestRepository.findById(leaveId)
                 .orElseThrow(() -> new RuntimeException("LeaveRequest not found with id: " + leaveId));
 
-        validateApprover(approver, leave);
+        LeaveStatus newStatus = parseLeaveStatus(dto.getStatus());
 
-        LeaveStatus status;
-        try {
-            status = LeaveStatus.valueOf(dto.getStatus().toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeException("Invalid status value: " + dto.getStatus());
+        // Validate if approver is allowed to approve
+        if (!canApprove(approver, leave)) {
+            throw new RuntimeException("User " + approver.getUserName() + " is not authorized to approve this leave.");
         }
 
-        leave.setStatus(status);
+        leave.setStatus(newStatus);
         leave.setApprovedBy(approver);
-
-        // Force updatedAt to current timestamp
         leave.setUpdatedAt(LocalDateTime.now());
 
-        LeaveRequest saved = leaveRequestRepository.save(leave);
-        return mapper.entityToDto(saved);
+        return mapper.entityToDto(leaveRequestRepository.save(leave));
     }
 
-
-    private void validateApprover(User approver, LeaveRequest leave) {
-        User requestedBy = leave.getRequestedBy();
-
-        // HR can approve any leave
-        if (approver.getDepartment() == Department.HR) return;
-
-        // Managers can approve team members of same department
-        if (approver.getPosition().ordinal() >= Position.MANAGER.ordinal()) {
-            if (requestedBy.getDepartment() == approver.getDepartment()
-                    && requestedBy.getPosition().ordinal() < approver.getPosition().ordinal()) {
-                return;
-            }
-        }
-
-        throw new RuntimeException("User " + approver.getUserName() + " is not authorized to approve this leave.");
+    /** DELETE **/
+    public void delete(Integer id) {
+        LeaveRequest existing = leaveRequestRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("LeaveRequest not found with id: " + id));
+        leaveRequestRepository.delete(existing);
     }
 
+    /** PENDING APPROVALS **/
     public List<LeaveRequestDto> pendingApprovals(String token) {
         Integer userId = jwtUtil.extractUserId(token);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         List<LeaveRequest> pending;
-
         if (user.getDepartment() == Department.HR) {
             pending = leaveRequestRepository.findByStatus(LeaveStatus.PENDING);
-        } else if (user.getPosition().ordinal() >= Position.MANAGER.ordinal()) {
+        } else if (isManagerOrAbove(user.getPosition())) {
             pending = leaveRequestRepository.findByRequestedBy_DepartmentAndStatus(user.getDepartment(), LeaveStatus.PENDING);
         } else {
             pending = List.of();
@@ -192,9 +168,52 @@ public class LeaveRequestService {
         return pending.stream().map(mapper::entityToDto).collect(Collectors.toList());
     }
 
-    public void delete(Integer id) {
-        LeaveRequest existing = leaveRequestRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("LeaveRequest not found with id: " + id));
-        leaveRequestRepository.delete(existing);
+    /** HELPERS **/
+    private boolean isHighLevelPosition(Position position) {
+        return switch (position) {
+            case CEO, CXO, VICE_PRESIDENT, PRESIDENT, DIRECTOR -> true;
+            default -> false;
+        };
     }
+
+    private boolean isManagerOrAbove(Position position) {
+        return switch (position) {
+            case MANAGER, SENIOR_MANAGER, DIRECTOR, VICE_PRESIDENT, PRESIDENT, CXO, CEO -> true;
+            default -> false;
+        };
+    }
+
+    private LeaveStatus parseLeaveStatus(String status) {
+        try {
+            return LeaveStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeException("Invalid leave status: " + status);
+        }
+    }
+
+    private boolean canApprove(User approver, LeaveRequest leave) {
+        User requester = leave.getRequestedBy();
+        Position approverPos = approver.getPosition();
+        Position requesterPos = requester.getPosition();
+
+        // HR can approve any if position >= MANAGER
+        if (approver.getDepartment() == Department.HR && approverPos.ordinal() >= Position.MANAGER.ordinal()) {
+            return true;
+        }
+
+        // Director can approve anyone
+        if (approverPos == Position.DIRECTOR) {
+            return true;
+        }
+
+        // Managers can approve subordinates in same department
+        if (approverPos.ordinal() > requesterPos.ordinal() &&
+                approverPos.ordinal() <= Position.DIRECTOR.ordinal() && // exclude CXO, CEO
+                approver.getDepartment() == requester.getDepartment()) {
+            return true;
+        }
+
+        return false;
+    }
+
 }

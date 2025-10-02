@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface PermissionRepository extends JpaRepository<Permission, Integer> {
     List<Permission> findByUser_UserId(Integer id);
+
 }

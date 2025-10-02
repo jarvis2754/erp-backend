@@ -1,6 +1,7 @@
 package com.erp.system.erpsystem.service;
 
 import com.erp.system.erpsystem.dto.user.UserDto;
+import com.erp.system.erpsystem.dto.user.UserPasswordUpdateDto;
 import com.erp.system.erpsystem.dto.user.UserUpdateDto;
 import com.erp.system.erpsystem.mapper.UserMapper;
 import com.erp.system.erpsystem.model.Organization;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -63,7 +65,7 @@ public class UserService {
             userRepo.findByUuId(userUpdateDto.getReportingManager())
                     .ifPresent(user::setReportingManager);
         }
-
+        user.setJoiningDate(LocalDate.now());
         User saved = userRepo.save(user);
         return UserMapper.toDto(saved);
     }
@@ -92,10 +94,29 @@ public class UserService {
         return UserMapper.toDto(updated);
     }
 
+    @Transactional
+    public UserDto updateUserPassword(String token, UserPasswordUpdateDto userUpdateDto) {
+        User user = userRepo
+                .findById(jwtUtil.extractUserId(token))
+                .orElseThrow(()-> new RuntimeException("User not found"));
+        if (!passwordEncoder.matches(userUpdateDto.getOldPassword(), user.getPassword())) {
+            throw new RuntimeException("Old password is incorrect");
+        }
+        user.setPassword(passwordEncoder.encode(userUpdateDto.getNewPassword()));
+        User updated = userRepo.save(user);
+        return UserMapper.toDto(updated);
+    }
+
     // --- Get User by UUID ---
     public UserDto getUserByUUID(String uuid) {
         User user = userRepo.findByUuId(uuid)
                 .orElseThrow(() -> new RuntimeException("User with UUID " + uuid + " not found"));
+        return UserMapper.toDto(user);
+    }
+
+    public UserDto getCurrentUser(String token) {
+        User user = userRepo.findById(jwtUtil.extractUserId(token))
+                .orElseThrow(() -> new RuntimeException("User not found"));
         return UserMapper.toDto(user);
     }
 

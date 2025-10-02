@@ -1,6 +1,7 @@
 package com.erp.system.erpsystem.controller;
 
 import com.erp.system.erpsystem.dto.user.UserDto;
+import com.erp.system.erpsystem.dto.user.UserPasswordUpdateDto;
 import com.erp.system.erpsystem.dto.user.UserUpdateDto;
 import com.erp.system.erpsystem.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,26 @@ public class UserController {
                                               @RequestBody UserUpdateDto userUpdateDto) {
         UserDto updated = userService.updateUser(id, userUpdateDto);
         return ResponseEntity.ok(updated);
+    }
+
+    @PatchMapping("/password")
+    public ResponseEntity<?> updatePassword(@RequestHeader("Authorization") String authHeader,
+                                              @RequestBody UserPasswordUpdateDto userPasswordUpdateDto) {
+        try{
+            String token = authHeader.substring(7);
+            UserDto updated = userService.updateUserPassword(token, userPasswordUpdateDto);
+            return ResponseEntity.ok(updated);
+        }catch(RuntimeException e){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/user")
+    public ResponseEntity<UserDto> getCurrentUSer(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.substring(7);
+        UserDto userDto = userService.getCurrentUser(token);
+        return ResponseEntity.ok(userDto);
     }
 
     // --- Get User by UUID ---

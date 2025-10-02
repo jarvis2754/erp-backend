@@ -38,7 +38,7 @@ public class PermissionRequestController {
     }
 
     @GetMapping("/orgs/{orgId}/permissions")
-    public ResponseEntity<Page<PermissionRequestDto>> listByOrg(@PathVariable Integer orgId,
+    public ResponseEntity<Page<PermissionRequestDto>> listByOrg(@PathVariable String orgId,
                                                                 @RequestParam(defaultValue = "0") int page,
                                                                 @RequestParam(defaultValue = "20") int size,
                                                                 @RequestParam(required = false) String status) {
@@ -57,8 +57,23 @@ public class PermissionRequestController {
     }
 
     @GetMapping("/users/{userId}/permissions")
-    public ResponseEntity<List<PermissionRequestDto>> listByUser(@PathVariable Integer userId) {
-        return ResponseEntity.ok(service.listByUser(userId));
+    public ResponseEntity<?> listByUser(@PathVariable Integer userId) {
+        try {
+            return ResponseEntity.ok(service.listByUser(userId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/users/permissions")
+    public ResponseEntity<?> listByCurrentUser(@RequestHeader("Authorization") String authHeader) {
+
+        try {
+            String token  = authHeader.substring(7);
+            return ResponseEntity.ok(service.listByCurrentUser(token));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @PutMapping("/permissions/{id}")

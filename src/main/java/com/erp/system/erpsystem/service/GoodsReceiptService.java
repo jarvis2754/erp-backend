@@ -13,8 +13,6 @@ import com.erp.system.erpsystem.repository.PurchaseOrderRepository;
 import com.erp.system.erpsystem.repository.UserRepository;
 import com.erp.system.erpsystem.utils.JwtUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -29,62 +27,93 @@ public class GoodsReceiptService {
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
 
+    /** --- Authorization Helpers --- **/
+
+    private User getCurrentUser(String token) {
+        Integer userId = jwtUtil.extractUserId(token);
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
 
     private boolean isOperationsOrManager(User user) {
         Department dept = user.getDepartment();
         Position pos = user.getPosition();
-        return dept == Department.OPERATIONS ||
-                pos.ordinal() >= Position.MANAGER.ordinal();
+        return (dept == Department.PROCUREMENT
+                || dept == Department.FINANCE
+                || dept == Department.OPERATIONS)
+                && pos.ordinal() >= Position.LEAD.ordinal();
     }
+
+    private boolean isOperations(User user) {
+        Department dept = user.getDepartment();
+        Position pos = user.getPosition();
+        return (dept == Department.PROCUREMENT
+                || dept == Department.FINANCE
+                || dept == Department.OPERATIONS);
+
+    }
+
+    private boolean canApprove(User user) {
+        Department dept = user.getDepartment();
+        Position pos = user.getPosition();
+        return (dept == Department.PROCUREMENT
+                || dept == Department.OPERATIONS)
+                && pos.ordinal() >= Position.MANAGER.ordinal();
+    }
+
+    private boolean canView(User user, GoodsReceipt gr) {
+        return isOperations(user)
+                || (gr.getPurchaseOrder() != null
+                && gr.getPurchaseOrder().getOrg() != null
+                && user.getOrganization().getOrgId().equals(gr.getPurchaseOrder().getOrg().getOrgId()));
+    }
+
+    /** --- Service Methods --- **/
 
     public List<GoodsReceiptDto> getAll(String token) {
-        User user = userRepository
-                .findById(jwtUtil.extractUserId(token))
-                .orElseThrow(()->new RuntimeException("User not found"));
+        User user = getCurrentUser(token);
 
-        if (isOperationsOrManager(user) || user.getDepartment() == Department.PROCUREMENT) {
-            return goodsReceiptRepository.findByPurchaseOrder_Org_OrgId(user.getOrganization().getOrgId())
-                    .stream()
-                    .map(GoodsReceiptMapper::toDto)
-                    .collect(Collectors.toList());
+        if (!isOperations(user) && !(user.getDepartment() == Department.ADMINISTRATION)) {
+            throw new RuntimeException("Unauthorized: Cannot view Goods Receipts");
         }
 
-        throw new RuntimeException("Unauthorized: Cannot view GRs");
+        return goodsReceiptRepository.findByPurchaseOrder_Org_OrgId(user.getOrganization().getOrgId())
+                .stream()
+                .map(GoodsReceiptMapper::toDto)
+                .collect(Collectors.toList());
     }
 
-    public GoodsReceiptDto getById(Integer id ,String token) {
+    public GoodsReceiptDto getById(Integer id, String token) {
         GoodsReceipt gr = goodsReceiptRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Goods Receipt not found"));
-        User user = userRepository
-                .findById(jwtUtil.extractUserId(token))
-                .orElseThrow(()->new RuntimeException("User not found"));
-        if (!isOperationsOrManager(user) && user.getDepartment() != Department.PROCUREMENT) {
-            throw new RuntimeException("Unauthorized: Cannot view this GR");
+        User user = getCurrentUser(token);
+
+        if (!(canView(user, gr) || user.getDepartment() == Department.ADMINISTRATION )) {
+            throw new RuntimeException("Unauthorized: Cannot view this Goods Receipt");
         }
+
         return GoodsReceiptMapper.toDto(gr);
     }
 
-    public GoodsReceiptDto create(CreateGoodsReceiptDto dto,String token) {
-        User user = userRepository
-                .findById(jwtUtil.extractUserId(token))
-                .orElseThrow(()->new RuntimeException("User not found"));
+    public GoodsReceiptDto create(CreateGoodsReceiptDto dto, String token) {
+        User user = getCurrentUser(token);
+
         if (!isOperationsOrManager(user)) {
-            throw new RuntimeException("Unauthorized: Only operations/manager+ can create GR");
+            throw new RuntimeException("Unauthorized: Only Operations/Manager+ can create Goods Receipts");
         }
 
         PurchaseOrder po = poRepository.findById(dto.getPoId())
-                .orElseThrow(() -> new RuntimeException("PO not found"));
+                .orElseThrow(() -> new RuntimeException("Purchase Order not found"));
 
         GoodsReceipt gr = GoodsReceiptMapper.toEntity(dto, po);
         return GoodsReceiptMapper.toDto(goodsReceiptRepository.save(gr));
     }
 
-    public GoodsReceiptDto update(Integer id, CreateGoodsReceiptDto dto,String token) {
-        User user = userRepository
-                .findById(jwtUtil.extractUserId(token))
-                .orElseThrow(()->new RuntimeException("User not found"));
-        if (!isOperationsOrManager(user)) {
-            throw new RuntimeException("Unauthorized: Only operations/manager+ can update GR");
+    public GoodsReceiptDto update(Integer id, CreateGoodsReceiptDto dto, String token) {
+        User user = getCurrentUser(token);
+
+        if (!canApprove(user)) {
+            throw new RuntimeException("Unauthorized: Only Operations/Manager+ can update Goods Receipts");
         }
 
         GoodsReceipt gr = goodsReceiptRepository.findById(id)
@@ -99,4 +128,3 @@ public class GoodsReceiptService {
         return GoodsReceiptMapper.toDto(goodsReceiptRepository.save(gr));
     }
 }
-
