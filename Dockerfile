@@ -1,39 +1,38 @@
 # -------------------------
 # Stage 1: Build the project
 # -------------------------
-FROM maven:3.9.2-eclipse-temurin-21 AS build
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 
 # Set working directory
 WORKDIR /app
 
-# Copy pom.xml first to cache dependencies
+# Copy pom.xml first to download dependencies (better caching)
 COPY pom.xml .
 
-# Download dependencies
 RUN mvn dependency:go-offline -B
 
 # Copy source code
 COPY src ./src
 
-# Build the jar (skip tests for faster build)
+# Build the jar (skip tests for faster builds)
 RUN mvn clean package -DskipTests
 
 # -------------------------
-# Stage 2: Run the jar
+# Stage 2: Run the application
 # -------------------------
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-jammy
 
 # Set working directory
 WORKDIR /app
 
-# Copy the built jar from the build stage
+# Copy the jar from build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Expose port
+# Expose Spring Boot port
 EXPOSE 8080
 
-# Set environment variable for Spring profile (default)
+# Default Spring profile (can override with ENV in Render)
 ENV SPRING_PROFILES_ACTIVE=postgres
 
-# Command to run the app
+# Run the Spring Boot application
 ENTRYPOINT ["java", "-jar", "app.jar"]
