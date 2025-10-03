@@ -51,7 +51,13 @@ public class DashboardService {
         for (int i = 0; i < 7; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
             int attendanceCount = attendanceRepository.countByDateAndStatusAndUserOrganization(date, AttendanceStatus.PRESENT, organization);
-            long totalEmployee = userRepository.countByPositionLessThanAndOrganizationOrgIdAndJoiningDateLessThanEqual(Position.SENIOR_MANAGER,orgId,date);
+            long totalEmployee = userRepository.countByPositionInAndOrganizationOrgIdAndJoiningDateLessThanEqual(
+                    List.of(Position.INTERN, Position.ASSOCIATE, Position.EXECUTIVE, Position.SENIOR_EXECUTIVE,
+                            Position.LEAD, Position.MANAGER, Position.SENIOR_MANAGER),
+                    orgId,
+                    date
+            );
+
 
             AttendanceTrendDashboardDto dto = new AttendanceTrendDashboardDto();
             dto.setDate(date.atStartOfDay()); // set as LocalDateTime
@@ -103,7 +109,13 @@ public class DashboardService {
         OrderStatsDashboardDto os = new OrderStatsDashboardDto();
         os.setTotalEmployee(userRepository.countByOrganizationOrgId(orgId));
         os.setTotalPresent(count);
-        long totalEmployee = userRepository.countByPositionLessThanAndOrganizationOrgIdAndJoiningDateLessThanEqual(Position.SENIOR_MANAGER,orgId,LocalDate.now());
+        long totalEmployee = userRepository.countByPositionInAndOrganizationOrgIdAndJoiningDateLessThanEqual(
+                List.of(Position.INTERN, Position.ASSOCIATE, Position.EXECUTIVE, Position.SENIOR_EXECUTIVE,
+                        Position.LEAD, Position.MANAGER, Position.SENIOR_MANAGER),
+                orgId,
+                LocalDate.now()
+        );
+
         os.setTotalAttendanceEligibleEmployee(totalEmployee);
         if (user.getDepartment() == Department.HR || user.getDepartment() == Department.PROCUREMENT || user.getDepartment()==Department.FINANCE) {
             if (user.getDepartment() == Department.HR) {

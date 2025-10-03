@@ -28,7 +28,7 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     Optional<User> findByUserName(String userName);
     int countByOrganizationOrgId(Integer orgId);
 
-    long countByPositionLessThanAndOrganizationOrgIdAndJoiningDateLessThanEqual(Position position, Integer orgId, LocalDate joiningDate);
+    long countByPositionInAndOrganizationOrgIdAndJoiningDateLessThanEqual(List<Position> position, Integer orgId, LocalDate joiningDate);
 
 
 

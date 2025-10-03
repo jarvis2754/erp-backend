@@ -22,6 +22,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 @RestController
@@ -62,6 +63,7 @@ public class AuthController {
             user.setPosition(Position.MANAGER);
             user.setDepartment(Department.ADMINISTRATION);
             user.setOrganization(organization);
+            user.setJoiningDate(LocalDate.now());
             userService.registerUser(user);
 
             return ResponseEntity.ok(Map.of("message", "User and Organization registered successfully"));
