@@ -116,4 +116,10 @@ public class AuthController {
                     .body(Map.of("message", "Login failed", "error", e.getMessage()));
         }
     }
+
+    @GetMapping("/health")
+    public ResponseEntity<String> healthCheck(){
+        return ResponseEntity.status(HttpStatus.OK).body("Health check ok");
+    }
+
 }
