@@ -38,4 +38,6 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
     );
 
     int countByOrganizationOrgIdAndStatus(Integer orgId,LeaveStatus status);
+
+    List<LeaveRequest> findByRequestedBy_UserId(Long userId);
 }

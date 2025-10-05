@@ -18,4 +18,5 @@ public interface AttendanceRepository extends JpaRepository<Attendance,Integer> 
     Optional<Attendance> findByUser_UserIdAndDate(Integer id, LocalDate date);
     int countByDateAndStatusAndUserOrganization(LocalDate date, AttendanceStatus status, Organization organization);
     Page<Attendance> findByUser_UserIdOrderByDateDesc(Integer userId, Pageable pageable);
+    List<Attendance> findByUser_UserIdAndDateBetween(Integer userId, LocalDate start, LocalDate end);
 }

@@ -30,7 +30,7 @@ public interface PermissionRequestRepository extends JpaRepository<PermissionReq
     Page<PermissionRequest> findByOrganization_OrgCodeOrderByCreatedAtDesc(String orgCode, Pageable pageable);
     Page<PermissionRequest> findByOrganization_OrgCodeAndStatusOrderByCreatedAtDesc(String orgId, PermissionStatus status, Pageable pageable);
 
-
+    List<PermissionRequest> findByRequestedBy_UserId(Long userId);
 }
 
 
